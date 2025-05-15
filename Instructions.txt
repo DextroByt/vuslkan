@@ -34,7 +34,7 @@ Before you can run Vulskan, you need to have the following installed:
 
 2. **Navigate to the Project Directory**  
    
-   cd YOUR_REPOSITORY_NAME
+   cd vulskan
 
 
 3. **Install Dependencies**  
