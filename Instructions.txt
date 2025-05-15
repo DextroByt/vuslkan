@@ -1,115 +1,79 @@
 # Vulskan: Advanced Web Vulnerability Scanner
 
-## Project Description
 
-Vulskan is an open-source Python-based tool designed for identifying common web application vulnerabilities. It leverages modern scanning techniques for various vulnerability types (SQL Injection, Cross-Site Scripting, Command Injection, File Inclusion, etc.) and integrates with the Google Gemini API for enhanced analysis and reporting of the findings.
+Vulskan - Setup Instructions (Windows Only)
+===========================================
 
-**Please use this tool responsibly and only on targets for which you have explicit authorization.**
+These instructions will guide you through setting up Vulskan on a Windows machine manually, including how to add your Google Gemini API key.
 
-## Features
+----------------------------------------
+1. Download the Project Files (ZIP)
+----------------------------------------
+Option one : 
+1. Go to the GitHub repository:
+   https://github.com/DextroByt/vulskan
 
-* **Core Checks:** Automated scanning for a range of vulnerabilities including SQL Injection (Error, Boolean, Time-based heuristics), Reflected XSS (basic detection), Command Injection, Local/Remote File Inclusion, Insecure HTTP Methods, Server Information Disclosure, Clickjacking, SSL/TLS issues, Open Redirect, and basic Subdomain Takeover indicators.
-* **Structured Findings:** Provides detailed, structured output for each potential vulnerability detected, including the type, severity heuristic, URL, affected parameter (if applicable), payload used, and snippets of the response.
-* **AI-Powered Analysis:** Utilizes the Google Gemini API to enrich raw scanner findings with detailed descriptions, potential impact, exploitation summaries (without providing exploit code), mitigation advice, and relevant CVEs.
-* **Form Analysis:** Basic parsing of HTML forms to identify potential input parameters for testing.
-* **Request Session Management:** Uses `requests.Session` for efficient handling of cookies and connections.
+2. Click the green "Code" button and choose "Download ZIP".
 
-## Prerequisites
+3. Extract the ZIP file to a known location, like your Desktop or Documents folder.
+   - Right-click on the downloaded ZIP file and choose "Extract All...".
 
-Before you can run Vulskan, you need to have the following installed:
-
-1.  **Python 3.7+**: Download and install Python from [python.org](https://www.python.org/downloads/).
-2.  **Google Gemini API Key**: Vulskan requires access to the Google Gemini API for the analysis phase. You can obtain a free API key from Google AI Studio: [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
-
-## Installation
-
-### For Windows & Linux
-
-1. **Clone the Repository**  
-   Open your terminal (Command Prompt for Windows, Terminal for Linux) and run:
-   
+Option 2 : 
+1. Open Command Prompt : 
    git clone https://github.com/DextroByt/vulskan.git
-   
-  
 
-2. **Navigate to the Project Directory**  
-   
-   cd vulskan
+2. Open the file explorer and check if the files are Extracted properly.
 
+----------------------------------------
+2. Install Python (If not already installed)
+----------------------------------------
+1. Visit https://www.python.org/downloads/
+2. Download the latest Python installer for Windows.
+3. Run the installer and make sure you check the box:
+   ✅ "Add Python to PATH"
+4. Complete the installation.
 
-3. **Install Dependencies**  
-   Make sure Python is installed on your system. Then install all required packages using:
-   
+----------------------------------------
+3. Install Dependencies
+----------------------------------------
+1. Open Command Prompt (press Windows Key, type `cmd`, and hit Enter).
+2. Navigate to the extracted project folder using the `cd` command. Example:
+   cd Desktop\vulskan
+
+3. Install the required Python libraries:
    pip install -r requirements.txt
 
+----------------------------------------
+4. Set Up the .env File (Google Gemini API Key)
+----------------------------------------
+1. Open the Vulskan project folder in File Explorer.
+2. Right-click and choose: New > Text Document
+3. Rename the new file to: .env
+   - Remove the `.txt` extension completely.
+   - If you can't see the extension, enable it in File Explorer: View > Show > File name extensions
 
-## Setup: Google Gemini API Key
+4. Right-click on `.env` and choose "Open with" > "Notepad".
+5. Paste the following line into the file:
 
-1. **Locate the `.env` File**  
-   A `.env` file is already included in the project root (next to `scanner.py` and `requirements.txt`).
+   GOOGLE_API_KEY=your-api-key-here
 
-2. **Paste Your API Key**  
-   Open the `.env` file using any text editor (Notepad on Windows or nano/vim on Linux) and paste your Google Gemini API key in the following format:
-   
-   GOOGLE_API_KEY=YOUR_API_KEY_HERE
-   
-   Replace `YOUR_API_KEY_HERE` with your actual API key from https://makersuite.google.com/.
+6. Replace `your-api-key-here` with your actual Google Gemini API key from:
+   https://aistudio.google.com/app/apikey
 
+7. Save and close the file.
 
+----------------------------------------
+5. Run the Vulskan Scanner
+----------------------------------------
+1. In Command Prompt, ensure you are inside the project directory.
+2. Run the scanner:
+   python scanner.py
 
-## Usage
+3. Follow the prompts to enter a target URL.
 
-1.  **Run the Scanner**: Execute the main scanner script from your terminal:
-    ```bash
-    python scanner.py
-    ```
-2.  **Enter Target URL**: The scanner will prompt you to enter the target URL. Provide the full URL including the scheme (http:// or https://).
-    ```
-    🔗 Enter target URL (e.g., [http://example.com](http://example.com) or [https://example.com](https://example.com)): [https://testphp.vulnweb.com](https://testphp.vulnweb.com)
-    ```
-3.  **Scan Execution**: The scanner will perform the initial checks, analyze forms, send payloads, and then use the AI to analyze the findings. You will see output in the console detailing the progress.
-
-## Output
-
-* **Console Output**: The script will print status updates and indicators of potential vulnerabilities during the scan process.
-* **Report File**: Upon completion, Vulskan generates an HTML report file (e.g., `vulskan_report_YYYYMMDD_HHMMSS.html`) in the project directory. This report contains a summary of findings, the AI-generated analysis for each issue, and details like the URL, parameter, and payload used.
-
-## 🚨 Warnings & Disclaimer 🚨
-
-This section is repeated for critical emphasis.
-
-**IMPORTANT SECURITY NOTICE & FAIR USE:**
-
-This tool is developed for **authorized security testing** and **educational purposes only**. Scanning any target without **explicit, prior, and written permission** from the owner is **illegal and unethical**. Respect privacy and property rights.
-
-**DISCLAIMER OF RESPONSIBILITY:**
-
-By using Vulskan, you acknowledge and agree that:
-* You are **ENTIRELY responsible** for your actions and any direct or indirect consequences.
-* You bear all risks associated with the use or misuse of this software.
-* The developer(s), contributors, and anyone associated with this project **SHALL NOT BE HELD RESPONSIBLE** for any damage, legal issues, or misuse resulting from the use of this tool.
-
-**USE THIS SOFTWARE AT YOUR OWN RISK AND ON YOUR OWN SOLE RESPONSIBILITY.**
-
-## Contributing (Optional Section)
-
-Contributions are welcome! If you'd like to contribute, please follow these steps:
-
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes and commit them (`git commit -m 'Add some feature'`).
-4.  Push to the branch (`git push origin feature/your-feature-name`).
-5.  Create a Pull Request.
-
-Please ensure your code adheres to the project's style and includes necessary tests/documentation.
-
-## License
-
-This project is licensed under the [LICENSE NAME, e.g., MIT License] - see the [LICENSE](LICENSE) file for details.
-
-**(You need to create a LICENSE file in your repository as well)**
-
-## Credits
-
-* Developed by: [Your Name/GitHub Username]
-* Uses libraries: `requests`, `google-generativeai`, `python-dotenv`, `beautifulsoup4`.
+----------------------------------------
+⚠️ Disclaimer & Legal Use Notice
+----------------------------------------
+- Use Vulskan only on websites or systems you own or have explicit written permission to test.
+- Unauthorized scanning is illegal and unethical.
+- The developers take no responsibility for any misuse of this tool.
