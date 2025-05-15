@@ -1,0 +1,8 @@
+python-Wappalyzer
+requests
+python-nmap
+pdfkit
+jinja2
+setuptools
+google-generativeai
+dotenv

@@ -1,0 +1,100 @@
+======================================================================
+                         VULSKAN REPORT
+======================================================================
+
+Target URL: {{ url }}
+Scan Timestamp: {{ scan_timestamp }}
+Total Potential Vulnerabilities Identified: {{ detailed_vulnerabilities | length }}
+
+----------------------------------------------------------------------
+DETECTED TECHNOLOGIES
+----------------------------------------------------------------------
+{% if technologies %}
+{% for tech in technologies %}
+  - {% if tech is mapping and tech.name %}{{ tech.name }}{% if tech.version %} (Version: {{ tech.version }}){% endif %}{% if tech.categories %} [Categories: {{ tech.categories | join(', ') }}]{% endif %}{% elif tech is string %}{{ tech }}{% elif tech is iterable and tech|length > 0 %}{# Handle (name, version) tuples #}{{ tech.0 }}{% if tech|length > 1 and tech.1 %} (Version: {{ tech.1 }}){% endif %}{% else %}{{ tech }} (Unknown Format){% endif %}
+{% endfor %}
+{% else %}
+  No specific technologies detected or an error occurred during detection.
+{% endif %}
+
+----------------------------------------------------------------------
+VULNERABILITY DETAILS
+----------------------------------------------------------------------
+{% if detailed_vulnerabilities %}
+{% for vuln in detailed_vulnerabilities %}
+Finding ID: {{ vuln.id }}
+Severity (AI Assessed): {{ vuln.ai_analysis.severity_assessment | default('Unknown') | replace('-', ' ') }} {# Use Unknown and replace hyphen #}
+Vulnerability Name (AI): {{ vuln.ai_analysis.vulnerability_name | default(vuln.original_finding | truncate(80)) }} {# Default to truncated original finding #}
+
+Original Scanner Finding:
+  {{ vuln.original_finding | wordwrap(100, wrapstring='\n  ') }} {# Apply wordwrap here too #}
+
+{% if vuln.ai_analysis and not vuln.ai_analysis.error %}
+AI Enhanced Description:
+  {{ vuln.ai_analysis.detailed_description | wordwrap(100, wrapstring='\n  ') }}
+
+Potential CVEs:
+  {% if vuln.ai_analysis.potential_cves %}{{ vuln.ai_analysis.potential_cves | join(', ') }}{% else %}N/A{% endif %}
+
+Exploitation Summary:
+  {{ vuln.ai_analysis.exploitation_summary | wordwrap(100, wrapstring='\n  ') }}
+
+Mitigation Advice:
+  {{ vuln.ai_analysis.mitigation_advice | wordwrap(100, wrapstring='\n  ') }}
+
+{% elif vuln.ai_analysis and vuln.ai_analysis.error %} {# Explicitly check for error field #}
+AI Analysis Error: {{ vuln.ai_analysis.error }}
+  {% if vuln.ai_analysis.raw_response %}Raw AI Response (partial): {{ vuln.ai_analysis.raw_response[:200] }}...{% endif %}
+{% else %} {# Case where ai_analysis key might be missing or None #}
+AI Analysis not available for this finding.
+{% endif %}
+----------------------------------------
+{% endfor %}
+{% else %}
+No vulnerabilities detected by the scan, or an error occurred during the AI enrichment phase.
+{% endif %}
+
+----------------------------------------------------------------------
+DISCOVERED FORMS ({{ forms | length if forms else 0 }}) {# Show count even if list is None #}
+----------------------------------------------------------------------
+{% if forms %}
+{% for f in forms %}
+Form ID: {{ f.id | default(loop.index) }} {# Use ID if available, else loop index #}
+  Action: {{ f.action if f.action else 'N/A' }}
+  Method: {{ f.method | default('N/A') }} {# Default for method too #}
+  Inputs ({{ f.inputs | length if f.inputs else 0 }}):
+  {% if f.inputs %}
+  {% for i in f.inputs %}
+    - Name: {{ i.name if i.name else 'N/A' }}, Type: {{ i.type if i.type else 'N/A' }}
+  {% endfor %}
+  {% else %}
+    No inputs
+  {% endif %}
+---
+{% endfor %}
+{% else %}
+No forms found.
+{% endif %}
+
+----------------------------------------------------------------------
+RESPONSE HEADERS
+----------------------------------------------------------------------
+{% if headers %}
+{{ headers | tojson(indent=2) }} {# Using the tojson filter for structured output #}
+{% else %}
+No headers captured.
+{% endif %}
+
+----------------------------------------------------------------------
+COOKIES
+----------------------------------------------------------------------
+{% if cookies %}
+{{ cookies | tojson(indent=2) }} {# Using the tojson filter for structured output #}
+{% else %}
+No cookies captured.
+{% endif %}
+
+======================================================================
+Vulskan © 2025. AI insights powered by Google Gemini.
+Disclaimer: This report is for informational purposes only. Always verify findings and consult with security professionals.
+======================================================================

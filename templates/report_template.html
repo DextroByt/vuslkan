@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vulskan Report - {{ url }}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; color: #333; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 20px; background-color: #fff; box-shadow: 0 0 15px rgba(0,0,0,0.1); border-radius: 8px; }
+        header { background-color: #1a237e; color: #fff; padding: 20px; border-radius: 8px 8px 0 0; } /* Darker Indigo */
+        header h1 { margin: 0; font-size: 2em; }
+        header p { margin: 5px 0 0; font-size: 0.9em; }
+        .scan-meta { background-color: #eef3f7; padding: 15px; margin-bottom: 20px; border-radius: 4px; border-left: 5px solid #42a5f5; } /* Lighter Blue Accent */
+        .scan-meta p { margin: 5px 0; }
+        .section { margin-bottom: 30px; }
+        .section h2 { font-size: 1.6em; color: #1a237e; border-bottom: 2px solid #42a5f5; padding-bottom: 5px; margin-bottom: 15px; } /* Darker Indigo Title */
+        .section h3 { font-size: 1.3em; color: #333; margin-top: 20px; margin-bottom: 10px; }
+        .list-item { background-color: #f9f9f9; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
+        .list-item strong { color: #42a5f5; } /* Lighter Blue Accent */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        th { background-color: #42a5f5; color: white; } /* Lighter Blue Accent */
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .vulnerability-card { border: 1px solid #ddd; border-left-width: 5px; margin-bottom: 20px; border-radius: 5px; background-color: #fff; }
+        .vulnerability-card.high { border-left-color: #dc3545; }
+        .vulnerability-card.medium { border-left-color: #ffc107; }
+        .vulnerability-card.low { border-left-color: #28a745; }
+        .vulnerability-card.informational { border-left-color: #17a2b8; }
+        .vulnerability-header { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .vulnerability-header h3 { margin: 0; font-size: 1.2em; display: flex; justify-content: space-between; align-items: center; }
+        .vulnerability-header .severity { font-weight: bold; padding: 5px 10px; border-radius: 4px; color: white; }
+        .vulnerability-header .severity-High { background-color: #dc3545; }
+        .vulnerability-header .severity-Medium { background-color: #ffc107; color: #333; }
+        .vulnerability-header .severity-Low { background-color: #28a745; }
+        .vulnerability-header .severity-Informational { background-color: #17a2b8; }
+        .vulnerability-details { padding: 15px; display: none; /* Hidden by default */ }
+        .vulnerability-details p { margin-top: 0; margin-bottom: 10px;}
+        .vulnerability-details strong { color: #1a237e; } /* Darker Indigo */
+        .code { background-color: #eef3f7; padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', Courier, monospace; }
+        .error { color: #dc3545; font-weight: bold; }
+        .toggle-icon { font-size: 1.2em; }
+        .print-button {
+            display: inline-block;
+            background-color: #42a5f5; /* Match accent color */
+            color: white;
+            padding: 10px 20px;
+            margin-top: 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+        }
+        .print-button:hover {
+            background-color: #1e88e5; /* Slightly darker blue on hover */
+        }
+
+        footer { text-align: center; margin-top: 30px; padding: 15px; font-size: 0.9em; color: #777; border-top: 1px solid #eee; }
+
+        /* --- Print Styles --- */
+        @media print {
+            body { background-color: #fff; } /* White background for printing */
+            .container { box-shadow: none; margin: 0; padding: 0; } /* Remove shadows, borders, margins */
+            header { background-color: #fff; color: #333; border-bottom: 2px solid #eee; print-color-adjust: exact; -webkit-print-color-adjust: exact; } /* White header with border */
+            header h1 { color: #333; }
+            .scan-meta, .list-item, .vulnerability-card, table, th, td { border-color: #ccc !important; background-color: #fff !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; } /* Use greys for borders/backgrounds, ensure exact colors are used */
+            th { background-color: #eee !important; color: #333 !important; }
+            .print-button { display: none; } /* Hide the print button */
+            .vulnerability-details { display: block !important; } /* Show all details when printing */
+            .toggle-icon { display: none; } /* Hide toggle icons */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Vulskan Report</h1>
+            <p>Comprehensive Web Security Scan Report</p> {# Slightly adjusted description #}
+        </header>
+
+        <section class="scan-meta section">
+            <h2>Scan Overview</h2>
+            <p><strong>Target URL:</strong> <code class="code">{{ url }}</code></p>
+            <p><strong>Scan Timestamp:</strong> {{ scan_timestamp }}</p>
+            <p><strong>Total Potential Vulnerabilities Identified:</strong> {{ detailed_vulnerabilities | length }}</p>
+             <button onclick="window.print()" class="print-button">Print Report</button> {# Added Print Button #}
+        </section>
+
+        <section class="technologies section">
+            <h2>Detected Technologies</h2>
+            {% if technologies %}
+                <ul>
+                {% for tech in technologies %}
+                    {# Handles different possible formats of tech data #}
+                    {% if tech is mapping and tech.name %}
+                        <li class="list-item">
+                            <strong>{{ tech.name }}</strong>
+                            {% if tech.version %}(Version: {{ tech.version }}){% endif %}
+                            {% if tech.categories %}<br><small>Categories: {{ tech.categories | join(', ') }}</small>{% endif %}
+                        </li>
+                    {% elif tech is string %}
+                       <li class="list-item"><strong>{{ tech }}</strong></li>
+                    {% elif tech is iterable and tech|length > 0 %} {# Handle (name, version) tuples #}
+                       <li class="list-item">
+                           <strong>{{ tech.0 }}</strong>
+                           {% if tech|length > 1 and tech.1 %}(Version: {{ tech.1 }}){% endif %}
+                       </li>
+                    {% else %} {# Fallback for unexpected formats #}
+                       <li class="list-item"><strong>{{ tech }}</strong> (Unknown Format)</li>
+                    {% endif %}
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p>No specific technologies detected or an error occurred during detection.</p>
+            {% endif %}
+        </section>
+
+        <section class="vulnerabilities section">
+            <h2>Vulnerability Details</h2>
+            {% if detailed_vulnerabilities %}
+                {% for vuln in detailed_vulnerabilities %}
+                {% set severity = vuln.ai_analysis.severity_assessment | default('Informational') | replace(' ', '-') %}
+                <div class="vulnerability-card {{ severity | lower }}">
+                    <div class="vulnerability-header" onclick="toggleDetails('{{ vuln.id }}')">
+                        <h3>
+                            <span>
+                                {{ vuln.ai_analysis.vulnerability_name | default(vuln.original_finding | truncate(80)) }} {# Increased truncate slightly #}
+                                (<code class="code">{{ vuln.id }}</code>)
+                            </span>
+                            <span class="severity severity-{{ severity }}">{{ severity | replace('-', ' ') }}</span>
+                            <span class="toggle-icon" id="icon-{{vuln.id}}">+</span>
+                        </h3>
+                    </div>
+                    <div class="vulnerability-details" id="details-{{ vuln.id }}">
+                        <p><strong>Original Scanner Finding:</strong><br> <code class="code">{{ vuln.original_finding }}</code></p>
+                        {% if vuln.ai_analysis and not vuln.ai_analysis.error %}
+                            <p><strong>AI Enhanced Description:</strong><br> {{ vuln.ai_analysis.detailed_description | safe }}</p>
+                            <p><strong>Potential CVEs:</strong><br>
+                                {% if vuln.ai_analysis.potential_cves %}
+                                    {% for cve in vuln.ai_analysis.potential_cves %}
+                                        <code class="code">{{ cve }}</code>{% if not loop.last %}, {% endif %} {# Add comma between CVEs #}
+                                    {% endfor %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </p>
+                            <p><strong>Exploitation Summary:</strong><br> {{ vuln.ai_analysis.exploitation_summary | safe }}</p>
+                            <p><strong>Mitigation Advice:</strong><br> {{ vuln.ai_analysis.mitigation_advice | safe }}</p>
+                        {% elif vuln.ai_analysis and vuln.ai_analysis.error %} {# Explicitly check for error field #}
+                            <p class="error">AI Analysis Error: {{ vuln.ai_analysis.error }}</p>
+                            {% if vuln.ai_analysis.raw_response %}
+                                <p><strong>Raw AI Response (partial):</strong><br><code class="code">{{ vuln.ai_analysis.raw_response[:500] }}...</code></p>
+                            {% endif %}
+                        {% else %} {# Case where ai_analysis key might be missing or None #}
+                             <p>AI Analysis not available for this finding.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No vulnerabilities detected by the scan, or an error occurred during the AI enrichment phase.</p>
+            {% endif %}
+        </section>
+
+        {% if forms %}
+        <section class="forms section">
+            <h2>Discovered Forms ({{ forms | length }})</h2>
+            <table>
+                <thead><tr><th>ID</th><th>Action</th><th>Method</th><th>Inputs</th></tr></thead>
+                <tbody>
+                {% for f in forms %}
+                    <tr>
+                        <td>{{ f.id | default(loop.index) }}</td> {# Use ID if available, else loop index #}
+                        <td>{{ f.action if f.action else 'N/A' }}</td>
+                        <td>{{ f.method }}</td>
+                        <td>
+                            {% if f.inputs %}
+                                {{ f.inputs | length }} input(s):
+                                <ul>{% for i in f.inputs %}<li>Name: <code class="code">{{ i.name if i.name else 'N/A' }}</code> (Type: <code class="code">{{ i.type if i.type else 'N/A' }}</code>)</li>{% endfor %}</ul>
+                            {% else %}
+                                No inputs
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </section>
+        {% endif %}
+
+        {# Headers and Cookies sections remain largely the same, using tables #}
+        {% if headers %}
+        <section class="headers section">
+            <h2>Response Headers</h2>
+             <table>
+                 <thead><tr><th>Header Name</th><th>Value</th></tr></thead>
+                 <tbody>
+                 {# Assuming headers is a dict, iterate over items #}
+                 {% for k, v in headers.items() %}
+                     <tr><td><strong>{{ k }}</strong></td><td><code class="code">{{ v }}</code></td></tr>
+                 {% endfor %}
+                 </tbody>
+             </table>
+        </section>
+        {% endif %}
+
+        {% if cookies %}
+        <section class="cookies section">
+            <h2>Cookies</h2>
+              <table>
+                  <thead><tr><th>Cookie Name</th><th>Value</th></tr></thead>
+                  <tbody>
+                  {# Assuming cookies is a dict, iterate over items #}
+                  {% for k, v in cookies.items() %}
+                      <tr><td><strong>{{ k }}</strong></td><td><code class="code">{{ v }}</code></td></tr>
+                  {% endfor %}
+                  </tbody>
+              </table>
+        </section>
+        {% endif %}
+
+        <footer>
+            {# Updated scanner name in footer #}
+            <p>Vulskan &copy; 2025. AI insights powered by Google Gemini.</p>
+            <p><small>Disclaimer: This report is for informational purposes only. Always verify findings and consult with security professionals.</small></p>
+        </footer>
+    </div>
+
+    <script>
+        function toggleDetails(vulnId) {
+            const detailsDiv = document.getElementById('details-' + vulnId);
+            const iconSpan = document.getElementById('icon-' + vulnId);
+            if (detailsDiv.style.display === 'none' || detailsDiv.style.display === '') {
+                detailsDiv.style.display = 'block';
+                iconSpan.textContent = '-';
+            } else {
+                detailsDiv.style.display = 'none';
+                iconSpan.textContent = '+';
+            }
+        }
+    </script>
+</body>
+</html>
