@@ -48,8 +48,9 @@ AI_REQUEST_DELAY = 2 # Seconds to wait between AI API calls to respect rate limi
 MAX_AI_RETRIES = 2
 
 class VulnerabilityScanner:
-    def __init__(self, url):
+    def __init__(self, url, storage_file="scan_report.json"):
         self.url = self._normalize_url(url)
+        self.storage_file = storage_file
         self.report_data = {
             'url': self.url,
             'scan_timestamp': time.strftime("%Y-%m-%d %H:%M:%S %Z"),
@@ -109,17 +110,59 @@ class VulnerabilityScanner:
     def analyze_forms(self):
         print("[*] Analyzing forms...")
         response = self._fetch_response("Form Analysis")
-        if not response: return
+        if not response:
+            return
+        
         soup = BeautifulSoup(response.text, 'html.parser')
+        new_forms = []
+        
         for form_count, form in enumerate(soup.find_all('form')):
-            self.report_data['forms'].append({
+            form_data = {
                 'id': f"form_{form_count+1}",
                 'action': form.get('action', 'N/A'),
                 'method': form.get('method', 'GET').upper(),
-                'inputs': [{'name': i.get('name', f'unnamed_input_{idx}'), 'type': i.get('type', 'text')} for idx, i in enumerate(form.find_all('input'))]
-            })
-        print(f"[*] Forms found: {len(self.report_data['forms'])}")
-
+                'inputs': [
+                    {'name': i.get('name', f'unnamed_input_{idx}'), 'type': i.get('type', 'text')}
+                    for idx, i in enumerate(form.find_all('input'))
+                ]
+            }
+            new_forms.append(form_data)
+        
+        # Load persistent forms from file (assuming self.storage_file is defined)
+        persistent_forms = []
+        if os.path.exists(self.storage_file):
+            with open(self.storage_file, 'r') as f:
+                all_results = json.load(f)
+            persistent_forms = all_results.get(self.url, {}).get('forms', [])
+        
+        # Merge forms: avoid duplicates by comparing 'id' and 'action'
+        combined_forms = persistent_forms.copy()
+        existing_keys = {(f['id'], f['action']) for f in persistent_forms}
+        
+        for form in new_forms:
+            key = (form['id'], form['action'])
+            if key not in existing_keys:
+                combined_forms.append(form)
+                existing_keys.add(key)
+        
+        self.report_data['forms'] = combined_forms
+        
+        print(f"[*] Forms found (including persistent): {len(combined_forms)}")
+        
+        # Save updated forms back to storage file
+        if os.path.exists(self.storage_file):
+            with open(self.storage_file, 'r') as f:
+                all_results = json.load(f)
+        else:
+            all_results = {}
+        
+        # Ensure the URL key exists and update only 'forms' part of report_data
+        if self.url not in all_results:
+            all_results[self.url] = {}
+        all_results[self.url]['forms'] = combined_forms
+        
+        with open(self.storage_file, 'w') as f:
+            json.dump(all_results, f, indent=2)
 
     def analyze_headers_and_cookies(self):
         print("[*] Analyzing headers and cookies...")
@@ -143,8 +186,8 @@ class VulnerabilityScanner:
                 print("[-] No vulnerabilities reported by initial scan (check_all_vulnerabilities).")
                 self.report_data['initial_vulnerabilities'] = ["No specific vulnerabilities found by the initial basic checks."]
         except Exception as e:
-            print(f"[!] Vulnerability Check Error during call to check_all_vulnerabilities: {e}")
-            self.report_data['initial_vulnerabilities'].append(f"Error during initial vulnerability scanning: {e}")
+                print(f"[!] Vulnerability Check Error during call to check_all_vulnerabilities: {e}")
+                self.report_data['initial_vulnerabilities'].append(f"Error during initial vulnerability scanning: {e}")
 
 
     def _get_ai_analysis(self, finding_data, technologies):
@@ -686,55 +729,61 @@ if __name__ == '__main__':
     print(" - Adhere to ethical hacking principles and legal boundaries.")
     print("-" * 60)
 
-    # --- Disclaimer of Responsibility ---
-    print("\n## 🛡️ DISCLAIMER OF RESPONSIBILITY 🛡️ ##")
-    print("-" * 60)
-    print(f"By using {APP_NAME}, you acknowledge and agree that:")
-    print(" - You are **ENTIRELY responsible** for your actions and any direct or indirect consequences.")
-    print(" - You bear all risks associated with the use or misuse of this software.")
-    print(" - The developer(s), contributors, and anyone associated with this project **SHALL NOT BE HELD RESPONSIBLE**")
-    print("   for any damage, legal issues, or misuse resulting from the use of this tool.")
-    print("\n**USE THIS SOFTWARE AT YOUR OWN RISK AND ON YOUR OWN SOLE RESPONSIBILITY.**")
-    print("-" * 60)
+# --- Vulskan ASCII Logo ---
+print("\n" + "="*60)
+print("  █████▒▒░░ VULSKAN VULNERABILITY SCANNER ░░▒▒█████")
+print("        ░░ A Cybersecurity Research Utility ░░")
+print("="*60 + "\n")
 
-    print("\nPress Enter to confirm you understand and agree to the terms above and proceed, or Ctrl+C to exit.")
+# --- Disclaimer of Responsibility ---
+print("## 🛡️  LEGAL & FAIR USE DISCLAIMER  🛡️")
+print("-" * 60)
+print(f"By using {APP_NAME}, you acknowledge and agree that:")
+print("\n⚠️  This tool is intended for **educational** and **authorized security testing** only.")
+print("⚠️  Unauthorized use against systems without permission is ILLEGAL.")
+print("\nYou further agree that:")
+print(" - You are **entirely responsible** for your actions and the consequences.")
+print(" - You bear **all risks** associated with the use or misuse of this software.")
+print(" - The **developer(s), contributors, and maintainers are NOT liable**")
+print("   for any misuse, data loss, damage, or legal consequences resulting from this tool.")
+print("\n📜 This software is provided 'AS IS' without any warranty, express or implied.")
+print("   Use it solely at your own risk and discretion.")
+print("-" * 60)
+
+# --- User Confirmation ---
+print("\nTo proceed, type **yes** to confirm you have read and accepted the above terms.")
+user_input = input("👉 Type 'yes' to continue or anything else to exit: ").strip().lower()
+
+if user_input != "yes":
+    print("\n❌ Operation cancelled. Exiting Vulskan.")
+    sys.exit(0)
+
+print("\n✅ Terms accepted. Proceeding with the scan...\n")
+print("="*60 + "\n")
+
+# --- Get Target URL and Start Scan ---
+target_url = input("🔗 Enter target URL (e.g., http://example.com or https://example.com): ").strip()
+
+if not target_url:
+    print("\n❌ Error: Target URL cannot be empty. Exiting.")
+    sys.exit(1)
+else:
     try:
-        input() # Wait for user acknowledgment
-    except KeyboardInterrupt:
-        print("\nOperation cancelled by user. Exiting.")
-        sys.exit(0) # Exit cleanly
+        scanner = VulnerabilityScanner(target_url)
 
-    print("\n" + "="*60 + "\n") # Separator before scan starts
+        print(f"\n🚀 Initiating scan for: {target_url}\n")
+        scanner.run_scan()
 
-    # --- Get Target URL and Start Scan ---
-    target_url = input("🔗 Enter target URL (e.g., http://example.com or https://example.com): ").strip()
+    except requests.exceptions.MissingSchema:
+        print(f"\n❌ Error: Invalid URL format. Please include the scheme (http:// or https://).")
+        sys.exit(1)
+    except requests.exceptions.ConnectionError as e:
+        print(f"\n❌ Connection Error: Could not connect to the target URL. Details: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n🔥 An unexpected error occurred during the scan: {e}")
+        sys.exit(1)
 
-    if not target_url:
-        print("\n❌ Error: Target URL cannot be empty. Exiting.")
-        sys.exit(1) # Exit with an error code
-    else:
-        try:
-            # The Scanner class's __init__ should handle URL normalization
-            # Initialize the scanner which should also initialize a requests.Session internally
-            scanner = VulnerabilityScanner(target_url)
-
-            print(f"\nInitiating scan for: {target_url}\n")
-            # The run_scan method will call the standalone check_all_vulnerabilities function
-            # and pass the session, url, and forms to it.
-            scanner.run_scan()
-
-        except requests.exceptions.MissingSchema:
-            print(f"\n❌ Error: Invalid URL format. Please include the scheme (http:// or https://).")
-            sys.exit(1)
-        except requests.exceptions.ConnectionError as e:
-            print(f"\n❌ Connection Error: Could not connect to the target URL. Details: {e}")
-            sys.exit(1)
-        except Exception as e:
-            # Catch any other unexpected errors during the scan process
-            print(f"\n🔥 An unexpected error occurred during the scan: {e}")
-            # You might want to add more specific error handling or logging here
-            sys.exit(1) # Exit with an error code
-
-    print("\n" + "="*60)
-    print(f"✅ Scan process finished for {target_url}")
-    print("="*60 + "\n")
+print("\n" + "="*60)
+print(f"✅ Scan process finished for {target_url}")
+print("="*60 + "\n")
