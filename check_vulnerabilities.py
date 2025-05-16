@@ -2,6 +2,11 @@ import requests
 from urllib.parse import urlparse, urljoin # For URL manipulation
 import time
 import json
+from bs4 import BeautifulSoup
+import re
+
+
+
 
 # Standard headers to mimic a browser, can help avoid simple blocks
 COMMON_HEADERS = {
@@ -9,7 +14,8 @@ COMMON_HEADERS = {
 }
 # Define a common timeout for requests
 REQUEST_TIMEOUT = 10
-
+session = requests.Session()
+session.headers.update(COMMON_HEADERS)
 def check_sql_injection(base_url):
     """Checks for basic SQL Injection vulnerabilities."""
     payloads = [
@@ -449,6 +455,402 @@ def check_subdomain_takeover(base_url_input):
     return vulnerabilities_found if vulnerabilities_found else None
 
 
+def check_csrf(base_url):
+    """Performs basic CSRF vulnerability checks by looking for forms without anti-CSRF tokens."""
+    print(f"[*] Performing CSRF check on: {base_url}")
+    try:
+        response = requests.get(base_url, headers=COMMON_HEADERS, timeout=REQUEST_TIMEOUT)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        forms = soup.find_all('form')
+        if not forms:
+            print("[-] No forms found on page, skipping CSRF check.")
+            return None
+
+        vulnerabilities_found = []
+        for form in forms:
+            inputs = form.find_all('input')
+            token_found = any('csrf' in (input.get('name') or '').lower() for input in inputs)
+            if not token_found:
+                action = form.get('action')
+                message = f"Possible CSRF: Form with action '{action}' lacks CSRF token."
+                print(f"[+] {message}")
+                vulnerabilities_found.append(message)
+        return vulnerabilities_found if vulnerabilities_found else None
+    except requests.exceptions.RequestException as e:
+        print(f"[!] Error during CSRF check for {base_url}: {e}")
+        return None
+
+def check_ssrf(base_url):
+    """Checks for possible SSRF vulnerabilities by injecting known external addresses."""
+    payloads = [
+        "http://127.0.0.1",
+        "http://localhost",
+        "http://169.254.169.254",  # AWS metadata
+        "http://[::1]",            # IPv6 localhost
+        "http://example.com@127.0.0.1",  # Obfuscated
+        "http://127.0.0.1:80",
+    ]
+    parameters_to_test = ['url', 'redirect', 'next', 'data', 'dest', 'image', 'path', 'file']
+    vulnerabilities_found = []
+
+    for param in parameters_to_test:
+        for payload in payloads:
+            test_url = f"{base_url}?{param}={payload}"
+            print(f"[*] Testing SSRF with payload '{payload}' on param '{param}': {test_url}")
+            try:
+                response = requests.get(test_url, headers=COMMON_HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+                # Check if request was redirected or has a response typical of internal addresses
+                if response.status_code in [200, 302, 403] and "localhost" in response.text.lower():
+                    message = f"Possible SSRF: Payload '{payload}' triggered internal interaction on {test_url}."
+                    print(f"[+] {message}")
+                    vulnerabilities_found.append(message)
+            except requests.exceptions.RequestException as e:
+                print(f"[!] Error during SSRF check for {test_url}: {e}")
+    return vulnerabilities_found if vulnerabilities_found else None
+
+def check_rate_limiting(base_url):
+    """Checks for lack of rate limiting by sending repeated login attempts."""
+    login_endpoint = f"{base_url}/login"  # Adjust if your login URL is different
+    print(f"[*] Testing for rate limiting on: {login_endpoint}")
+
+    vulnerabilities_found = []
+    for i in range(10):  # Send multiple login attempts
+        data = {'username': 'admin', 'password': f'wrongpassword{i}'}
+        print(f"[*] Attempt #{i+1}: Trying login with username=admin and password=wrongpassword{i}")
+        try:
+            response = requests.post(login_endpoint, data=data, headers=COMMON_HEADERS, timeout=REQUEST_TIMEOUT)
+            if response.status_code == 200:
+                if "incorrect" in response.text.lower() or "invalid" in response.text.lower():
+                    continue  # Login failed as expected
+                else:
+                    # If we get a success or no blocking message, might indicate a brute-force issue
+                    print(f"[!] Unexpected response during brute-force test: {response.text[:100]}")
+            elif response.status_code in [429, 403]:
+                print("[+] Rate limiting or protection detected.")
+                return None
+        except requests.exceptions.RequestException as e:
+            print(f"[!] Error during rate limiting check: {e}")
+            return None
+    message = "Possible Brute-force Vulnerability: No rate limiting detected after repeated login attempts."
+    print(f"[+] {message}")
+    vulnerabilities_found.append(message)
+    return vulnerabilities_found
+
+
+def check_broken_access_control(base_url):
+    """
+    - Direct access to common admin/user-management paths
+    - IDOR via predictable IDs or names
+    - Access to “secret” endpoints (e.g. /hidden, /secret)
+    """
+    print("\n[*] Checking Broken Access Control...")
+    admin_paths = [
+        '/admin', '/administrator', '/manage', '/dashboard',
+        '/admin/login', '/user/manage', '/hidden', '/secret'
+    ]
+    findings = []
+
+    # 1) Admin & secret paths
+    for path in admin_paths:
+        url = urljoin(base_url, path)
+        print(f"    - Testing access to {url} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+            if r.status_code == 200:
+                print(" FOUND")
+                findings.append(f"Unprotected admin path: {url} (HTTP 200)")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    # 2) IDOR: numeric, UUID-style, and username guesses
+    idor_tests = ['1','2','3','0001','0002','abc','testuser']
+    for ident in idor_tests:
+        url = f"{base_url}?id={ident}"
+        print(f"    - Testing IDOR {url} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT)
+            # heuristic: presence of “profile” or “user” in response & HTTP 200
+            if r.status_code == 200 and re.search(r'user[_\-\s]?name|profile', r.text, re.IGNORECASE):
+                print(" FOUND")
+                findings.append(f"Possible IDOR at {url}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_security_misconfiguration(base_url):
+    """
+    - Exposed .git, .env, backup/config files
+    - Directory listing
+    - Common default-install panels (phpMyAdmin, Jenkins, etc.)
+    """
+    print("\n[*] Checking Security Misconfiguration...")
+    files = [
+        '/.git/HEAD', '/.git/config', '/.env',
+        '/config.yml.bak', '/web.config.bak'
+    ]
+    panels = ['/phpmyadmin', '/pma', '/jenkins', '/setup']
+    findings = []
+
+    # exposed files
+    for p in files:
+        url = urljoin(base_url, p)
+        print(f"    - Checking {url} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT)
+            if r.status_code == 200 and len(r.text) > 20:
+                print(" FOUND")
+                findings.append(f"Exposed file: {url}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    # directory listing
+    dir_url = urljoin(base_url, '/')
+    print(f"    - Checking dir listing at {dir_url} ...", end="")
+    try:
+        r = session.get(dir_url, timeout=REQUEST_TIMEOUT)
+        if '<title>Index of' in r.text:
+            print(" FOUND")
+            findings.append(f"Directory listing enabled at {dir_url}")
+        else:
+            print(" OK")
+    except Exception as e:
+        print(f" ERROR ({e})")
+
+    # default panels
+    for ep in panels:
+        url = urljoin(base_url, ep)
+        print(f"    - Checking default panel {url} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT)
+            if r.status_code == 200:
+                print(" FOUND")
+                findings.append(f"Default panel accessible: {url}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_sensitive_data_exposure(base_url):
+    """
+    - Search common endpoints and headers for tokens, keys, creds.
+    """
+    print("\n[*] Checking Sensitive Data Exposure...")
+    endpoints = ['/', '/robots.txt', '/.gitignore']
+    regex = re.compile(
+        r'(AKIA[0-9A-Z]{16}|BEGIN PRIVATE KEY|password\s*=\s*["\']).{0,50}',
+        re.IGNORECASE
+    )
+    findings = []
+
+    for ep in endpoints:
+        url = urljoin(base_url, ep)
+        print(f"    - Scanning {url} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT)
+            body_matches = regex.findall(r.text)
+            header_matches = [
+                f"{h}: {v}"
+                for h, v in r.headers.items()
+                if re.search(r'token|secret|key|auth', h, re.IGNORECASE)
+            ]
+            if body_matches or header_matches:
+                print(" FOUND")
+                for m in body_matches:
+                    findings.append(f"Leaked secret in body @ {ep}: {m[:30]}...")
+                for h in header_matches:
+                    findings.append(f"Leaked header {h}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_cors_misconfiguration(base_url):
+    """
+    - OPTIONS + GET on sensitive endpoints with ACAO: *
+    """
+    print("\n[*] Checking CORS Misconfiguration...")
+    sensitive = ['/api/user', '/api/account', '/admin', '/settings']
+    findings = []
+
+    for p in sensitive:
+        url = urljoin(base_url, p)
+        print(f"    - OPTIONS {url} ...", end="")
+        try:
+            r = session.options(url, timeout=REQUEST_TIMEOUT)
+            ao = r.headers.get('Access-Control-Allow-Origin')
+            if ao == '*':
+                print(" FOUND")
+                findings.append(f"Wildcard CORS on {p}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_unvalidated_redirects(base_url):
+    """
+    - Test redirect params for open redirect
+    """
+    print("\n[*] Checking Unvalidated Redirects...")
+    params = ['redirect', 'next', 'url', 'returnTo', 'dest']
+    evil = "https://evil.example.com/"
+    findings = []
+
+    for p in params:
+        url = f"{base_url}?{p}={evil}"
+        print(f"    - Testing {p} -> {evil} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+            loc = r.headers.get('Location', '')
+            if r.status_code in (301,302) and evil in loc:
+                print(" FOUND")
+                findings.append(f"Open redirect via {p}: {loc}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_missing_or_weak_auth(base_url):
+    """
+    - Try protected endpoints without login
+    """
+    print("\n[*] Checking Missing/Weak Authentication...")
+    protected = ['/profile', '/settings', '/account', '/orders']
+    findings = []
+
+    for p in protected:
+        url = urljoin(base_url, p)
+        print(f"    - Accessing {url} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+            if r.status_code == 200:
+                print(" FOUND")
+                findings.append(f"Unauthenticated access: {p}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_weak_password_policy(base_url):
+    """
+    - Inspect signup form for password rules
+    """
+    print("\n[*] Checking Weak Password Policy...")
+    signup = urljoin(base_url, '/signup')
+    findings = []
+    print(f"    - Fetching {signup} ...", end="")
+    try:
+        r = session.get(signup, timeout=REQUEST_TIMEOUT)
+        form = r.text
+        # look for hints: minlength, pattern, JS enforcements
+        if not re.search(r'minlength\s*=\s*"\d+"', form) \
+           and not re.search(r'pattern\s*=\s*"/.+?"/', form) \
+           and 'passwordStrength' not in form:
+            print(" FOUND")
+            findings.append("No password complexity enforced on signup")
+        else:
+            print(" OK")
+    except Exception as e:
+        print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_clickjacking_additional(base_url):
+    """
+    - Ensure X-Frame-Options or CSP frame-ancestors
+    """
+    print("\n[*] Checking Clickjacking Headers...")
+    print(f"    - GET {base_url} ...", end="")
+    resp = session.get(base_url, timeout=REQUEST_TIMEOUT)
+    xfo = resp.headers.get('X-Frame-Options', '')
+    csp = resp.headers.get('Content-Security-Policy', '')
+    findings = []
+
+    if not xfo and 'frame-ancestors' not in csp:
+        print(" FOUND")
+        findings.append("Missing X-Frame-Options and CSP frame-ancestors")
+    else:
+        print(" OK")
+
+    return findings
+
+
+def check_api_endpoint_exposure(base_url):
+    """
+    - Probe /api/, /v1/, /v2/, /graphql
+    """
+    print("\n[*] Checking API Endpoint Exposure...")
+    apis = ['/api/', '/v1/', '/v2/', '/graphql', '/rest/']
+    findings = []
+    for a in apis:
+        url = urljoin(base_url, a)
+        print(f"    - GET {url} ...", end="")
+        try:
+            r = session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+            if r.status_code == 200:
+                print(" FOUND")
+                findings.append(f"Unprotected API endpoint: {a}")
+            else:
+                print(" OK")
+        except Exception as e:
+            print(f" ERROR ({e})")
+
+    return findings
+
+
+def check_internal_ips_in_responses(base_url):
+    """
+    - Scan HTML/JS for private IPv4 & IPv6 literals
+    """
+    print("\n[*] Checking for Exposed Internal IPs...")
+    findings = []
+    url = base_url  # only root page
+    print(f"    - GET {url} ...", end="")
+    try:
+        r = session.get(url, timeout=REQUEST_TIMEOUT)
+        text = r.text
+        ips = re.findall(
+            r'(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|'
+            r'192\.168\.\d{1,3}\.\d{1,3}|'
+            r'172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|'
+            r'fc00:[0-9a-f:]+)',
+            text, re.IGNORECASE
+        )
+        if ips:
+            print(" FOUND")
+            for ip in set(ips):
+                findings.append(f"Internal IP in response: {ip}")
+        else:
+            print(" OK")
+    except Exception as e:
+        print(f" ERROR ({e})")
+
+    return findings
+
+
 def check_all_vulnerabilities(base_url):
     """
     Runs all defined vulnerability checkers for the given base_url.
@@ -478,7 +880,20 @@ def check_all_vulnerabilities(base_url):
         check_clickjacking,
         check_ssl_tls,
         check_open_redirect,
-        check_subdomain_takeover 
+        check_subdomain_takeover,
+        check_csrf,
+        check_ssrf,
+        check_rate_limiting,
+        check_broken_access_control,
+        check_security_misconfiguration,
+        check_sensitive_data_exposure,
+        check_cors_misconfiguration,
+        check_unvalidated_redirects,
+        check_missing_or_weak_auth,
+        check_weak_password_policy,
+        check_api_endpoint_exposure,
+        check_internal_ips_in_responses
+
     ]
     
     for checker_func in checkers:
